@@ -1,0 +1,79 @@
+heat_template_version: 2013-05-23
+description: >
+  A simple Heat template that spins up multiple instances and a private network (HOT template in YAML).
+resources:
+  heat_network_01:
+    type: OS::Neutron::Net
+    properties:
+      admin_state_up: true
+      name: heat-network-01
+  heat_subnet_01:
+    type: OS::Neutron::Subnet
+    properties:
+      name: heat-subnet-01
+      cidr: 10.10.20.0/24
+      dns_nameservers: [8.8.8.8]
+      enable_dhcp: true
+      gateway_ip: 10.10.20.1
+      network_id: { get_resource: heat_network_01 }
+  heat_router_01:
+    type: OS::Neutron::Router
+    properties:
+      admin_state_up: true
+      name: heat-router-01
+  heat_router_01_gw:
+    type: OS::Neutron::RouterGateway
+    properties:
+      network_id: 637c95f7-14d3-4068-87cb-0fe80102c412 
+      router_id: { get_resource: heat_router_01 }
+  heat_router_int0:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: heat_router_01 }
+      subnet_id: { get_resource: heat_subnet_01 }
+  instance0_port0:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: heat_network_01 }
+      security_groups: [{ get_resource: server_security_group }]
+  instance1_port0:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: heat_network_01 }
+      security_groups: [{ get_resource: server_security_group }]
+  server_security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: Test group to demonstrate Neutron security group functionality with Heat.
+      name: test-security-group
+      rules: [
+        {remote_ip_prefix: 0.0.0.0/0,
+        protocol: tcp,
+        port_range_min: 22,
+        port_range_max: 22},
+        {remote_ip_prefix: 0.0.0.0/0,
+        protocol: icmp},
+	{remote_ip_prefix: 0.0.0.0/0,
+	protocol: tcp,
+        port_range_min: 80,
+        port_range_max: 80}]
+  instance0:
+    type: OS::Nova::Server
+    properties:
+      name: heat-instance-01
+      image: 6cead9d0-9179-4563-8070-3b4b31c921ff
+      flavor: m1.tiny
+      networks:
+        - port: { get_resource: instance0_port0 }
+      key_name: aio-key
+  instance1:
+    type: OS::Nova::Server
+    properties:
+      name: heat-instance-02
+      image: 6cead9d0-9179-4563-8070-3b4b31c921ff
+      flavor: m1.tiny
+      networks:
+        - port: { get_resource: instance1_port0 }
+      key_name: aio-key

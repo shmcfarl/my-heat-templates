@@ -1,0 +1,194 @@
+heat_template_version: 2013-05-23
+
+description: >
+  HOT template to create a new neutron network plus a router to the public
+  network, and for deploying two servers into the new network. The template also
+  assigns floating IP addresses to each server so they are routable from the
+  public network.
+
+parameters:
+  key_name:
+    type: string
+    description: Name of keypair to assign to servers
+    default: aio-key
+  image:
+    type: string
+    description: Name of image to use for servers
+    default: db9c7fde-fd1e-4047-8e26-2eb7979c1b1e
+  flavor:
+    type: string
+    description: Flavor to use for servers
+    default: m1.small
+  private_net_name:
+    type: string
+    description: Name of private network to be created
+    default: vlan13
+  private_net_cidr:
+    type: string
+    description: Private network address (CIDR notation)
+    default: 172.16.13.0/24
+  private_net_gateway:
+    type: string
+    description: Private network gateway address
+    default: 172.16.13.1
+  private_net_pool_start:
+    type: string
+    description: Start of private network IP address allocation pool
+    default: 172.16.13.5
+  private_net_pool_end:
+    type: string
+    description: End of private network IP address allocation pool
+    default: 172.16.13.254
+  provider_net_name:
+    type: string
+    description: Provider network name (e.g. vlan23)
+    default: vlan13
+  provider_net_type:
+    type: string
+    description: Network type (vlan or flat)
+    default: vlan
+  provider_phy_net:
+    type: string
+    description: Physical network name
+    default: physnet1
+  provider_seg_id:
+    type: string
+    description: Segmentation id (maps to VLAN ID)
+    default: '13'
+  dns_nameservers:
+    type: string
+    description: Add DNS nameserver(s)
+    default: [8.8.8.8]
+
+resources:
+  provider_net:
+    type: OS::Neutron::ProviderNet
+    properties:
+      name: { get_param: provider_net_name }
+      network_type: { get_param: provider_net_type }
+      physical_network: { get_param: provider_phy_net }
+      segmentation_id: { get_param: provider_seg_id }
+#      shared: { get_param: provider_shared }
+
+  private_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: provider_net }
+      cidr: { get_param: private_net_cidr }
+      gateway_ip: { get_param: private_net_gateway }
+      dns_nameservers: { get_param: dns_nameservers }
+      allocation_pools:
+        - start: { get_param: private_net_pool_start }
+          end: { get_param: private_net_pool_end }
+
+  server1:
+    type: OS::Nova::Server
+    properties:
+      name: Server1
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key_name }
+      networks:
+        - port: { get_resource: server1_port }
+      config_drive: "true"
+      user_data_format: RAW
+      user_data: |
+        #!/bin/bash
+        cat > index.html <<EOF
+        HTTP/1.1 200 OK Web1
+        EOF
+        sudo python -m SimpleHTTPServer 80
+  server1_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_resource: provider_net }
+      fixed_ips:
+        - subnet_id: { get_resource: private_subnet }
+      security_groups: [{ get_resource: server_security_group }]
+
+  server2:
+    type: OS::Nova::Server
+    properties:
+      name: Server2
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key_name }
+      networks:
+        - port: { get_resource: server2_port }
+      config_drive: "true"
+      user_data_format: RAW
+      user_data: |
+        #!/bin/bash
+        cat > index.html <<EOF
+        HTTP/1.1 200 OK Web2
+        EOF
+        sudo python -m SimpleHTTPServer 80 
+  server2_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_resource: provider_net }
+      fixed_ips:
+        - subnet_id: { get_resource: private_subnet }
+
+  server_security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: Heat-deployed security group.
+      name: heat-security-group
+      rules: [
+        {remote_ip_prefix: 0.0.0.0/0,
+        protocol: tcp,
+        port_range_min: 22,
+        port_range_max: 22},
+        {remote_ip_prefix: 0.0.0.0/0,
+        protocol: icmp},
+        {remote_ip_prefix: 0.0.0.0/0,
+        protocol: tcp,
+        port_range_min: 80,
+        port_range_max: 80}]
+
+  monitor:
+    type: OS::Neutron::HealthMonitor
+    properties:
+      type: TCP
+      delay: 5
+      max_retries: 5
+      timeout: 5
+  pool:
+    type: OS::Neutron::Pool
+    properties:
+      protocol: HTTP
+      monitors: [{get_resource: monitor}]
+      subnet_id: { get_resource: private_subnet }
+      lb_method: ROUND_ROBIN
+      vip:
+        protocol_port: 80
+  lb:
+    type: OS::Neutron::LoadBalancer
+    properties:
+      protocol_port: 80
+      pool_id: {get_resource: pool}
+
+  member:
+    type: OS::Neutron::PoolMember
+    properties:
+      pool_id: {get_resource: pool}
+      address: {get_attr: [server1, first_address]}
+      protocol_port: 80
+  member1:
+    type: OS::Neutron::PoolMember
+    properties:
+      pool_id: {get_resource: pool}
+      address: {get_attr: [server2, first_address]}
+      protocol_port: 80
+
+outputs:
+  server1_private_ip:
+    description: IP address of server1 in private network
+    value: { get_attr: [ server1, first_address ] }
+  server2_private_ip:
+    description: IP address of server2 in private network
+    value: { get_attr: [ server2, first_address ] }
+  pool_ip_address:
+    value: {get_attr: [pool, vip, address]}
+    description: The IP address of the load balancing pool

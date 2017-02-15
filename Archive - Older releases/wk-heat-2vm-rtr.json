@@ -1,0 +1,90 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "Sample Heat template that spins up multiple instances and a private network (JSON)",
+  "Resources" : {
+    "heat_network_01" : {
+      "Type" : "OS::Neutron::Net",
+      "Properties" : {
+        "name" : "heat-network-01"
+      }
+    },
+
+    "heat_subnet_01" : {
+      "Type" : "OS::Neutron::Subnet",
+      "Properties" : {
+        "name" : "heat-subnet-01",
+        "cidr" : "10.10.20.0/24",
+        "dns_nameservers" : ["172.16.1.11", "172.16.1.6"],
+        "enable_dhcp" : "True",
+        "gateway_ip" : "10.10.20.1",
+        "network_id" : { "Ref" : "heat_network_01" }
+      }
+    },
+
+    "heat_router_01" : {
+      "Type" : "OS::Neutron::Router",
+      "Properties" : {
+        "admin_state_up" : "True",
+        "name" : "heat-router-01"
+      }
+    },
+
+    "heat_router_01_gw" : {
+      "Type" : "OS::Neutron::RouterGateway",
+      "Properties" : {
+        "network_id" : "637c95f7-14d3-4068-87cb-0fe80102c412",
+        "router_id" : { "Ref" : "heat_router_01" }
+      }
+    },
+
+    "heat_router_int0" : {
+      "Type" : "OS::Neutron::RouterInterface",
+      "Properties" : {
+        "router_id" : { "Ref" : "heat_router_01" },
+        "subnet_id" : { "Ref" : "heat_subnet_01" }
+      }
+    },
+
+    "instance0_port0" : {
+      "Type" : "OS::Neutron::Port",
+      "Properties" : {
+        "admin_state_up" : "True",
+        "network_id" : { "Ref" : "heat_network_01" },
+        "security_groups" : ["055b5401-24a6-483e-8203-a854cab70430"]
+      }
+    },
+
+    "instance1_port0" : {
+      "Type" : "OS::Neutron::Port",
+      "Properties" : {
+        "admin_state_up" : "True",
+        "network_id" : { "Ref" : "heat_network_01" },
+        "security_groups" : ["055b5401-24a6-483e-8203-a854cab70430"]
+      }
+    },
+
+    "instance0" : {
+      "Type" : "OS::Nova::Server",
+      "Properties" : {
+        "name" : "heat-instance-01",
+        "image" : "6cead9d0-9179-4563-8070-3b4b31c921ff",
+        "flavor": "m1.tiny",
+        "networks" : [{
+          "port" : { "Ref" : "instance0_port0" }
+        }]
+      }
+    },
+
+    "instance1" : {
+      "Type" : "OS::Nova::Server",
+      "Properties" : {
+        "name" : "heat-instance-02",
+        "image" : "6cead9d0-9179-4563-8070-3b4b31c921ff",
+        "flavor": "m1.tiny",
+        "networks" : [{
+          "port" : { "Ref" : "instance1_port0" }
+        }]
+      }
+    }
+  }
+}

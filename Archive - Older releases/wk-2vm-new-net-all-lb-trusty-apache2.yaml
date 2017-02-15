@@ -1,0 +1,194 @@
+heat_template_version: 2013-05-23
+
+description: >
+  HOT template to create a new neutron network plus a router to the public
+  network, and for deploying two servers into the new network. The template also
+  assigns floating IP addresses to each server so they are routable from the
+  public network.
+
+parameters:
+  key_name: 
+    type: string
+    description: Name of keypair to assign to servers
+    default: aio-key
+  image:
+    type: string
+    description: Name of image to use for servers
+    default: 50ab9d5e-63f0-4f7a-9789-6912ee4ff3a5
+  flavor:
+    type: string
+    description: Flavor to use for servers
+    default: Demo
+  public_net_id:
+    type: string
+    description: >
+      ID or name of public network for which floating IP addresses will be allocated
+    default: 637c95f7-14d3-4068-87cb-0fe80102c412
+  private_net_name:
+    type: string
+    description: Name of private network to be created
+    default: test_net
+  private_net_cidr:
+    type: string
+    description: Private network address (CIDR notation)
+    default: 10.10.30.0/24
+  private_net_gateway:
+    type: string
+    description: Private network gateway address
+    default: 10.10.30.1
+  private_net_pool_start:
+    type: string
+    description: Start of private network IP address allocation pool
+    default: 10.10.30.2
+  private_net_pool_end:
+    type: string
+    description: End of private network IP address allocation pool
+    default: 10.10.30.254
+  dns_nameservers:
+    type: string
+    description: Add DNS nameserver(s)
+    default: [8.8.8.8]
+
+resources:
+  private_net:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: private_net_name }
+
+  private_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: private_net }
+      cidr: { get_param: private_net_cidr }
+      gateway_ip: { get_param: private_net_gateway }
+      dns_nameservers: { get_param: dns_nameservers }
+      allocation_pools:
+        - start: { get_param: private_net_pool_start }
+          end: { get_param: private_net_pool_end }
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info:
+        network: { get_param: public_net_id }
+
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: router }
+      subnet_id: { get_resource: private_subnet }
+
+  server1:
+    type: OS::Nova::Server
+    properties:
+      name: Server1
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key_name }
+      networks:
+        - port: { get_resource: server1_port }
+      config_drive: "true"
+      user_data_format: RAW
+      user_data: |
+        #!/bin/bash
+        sudo apt-get update
+        sudo apt-get install apache2
+  server1_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_resource: private_net }
+      fixed_ips:
+        - subnet_id: { get_resource: private_subnet }
+      security_groups: [{ get_resource: server_security_group }]
+  
+  server2:
+    type: OS::Nova::Server
+    properties:
+      name: Server2
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key_name }
+      networks:
+        - port: { get_resource: server2_port }
+      config_drive: "true"
+      user_data_format: RAW
+      user_data: |
+        #!/bin/bash
+        sudo apt-get update
+        sudo apt-get install apache2
+  server2_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_resource: private_net }
+      fixed_ips:
+        - subnet_id: { get_resource: private_subnet }
+
+  server_security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: Heat-deployed security group.
+      name: heat-security-group
+      rules: [
+        {remote_ip_prefix: 0.0.0.0/0,
+        protocol: tcp,
+        port_range_min: 22,
+        port_range_max: 22},
+        {remote_ip_prefix: 0.0.0.0/0,
+        protocol: icmp},
+        {remote_ip_prefix: 0.0.0.0/0,
+        protocol: tcp,
+        port_range_min: 80,
+        port_range_max: 80}]
+  
+  monitor:
+    type: OS::Neutron::HealthMonitor
+    properties:
+      type: TCP
+      delay: 5
+      max_retries: 5
+      timeout: 5
+  pool:
+    type: OS::Neutron::Pool
+    properties:
+      protocol: HTTP
+      monitors: [{get_resource: monitor}]
+      subnet_id: { get_resource: private_subnet }
+      lb_method: ROUND_ROBIN
+      vip:
+        protocol_port: 80
+  lb:
+    type: OS::Neutron::LoadBalancer
+    properties:
+      protocol_port: 80
+      pool_id: {get_resource: pool}
+
+  member:
+    type: OS::Neutron::PoolMember
+    properties:
+      pool_id: {get_resource: pool}
+      address: {get_attr: [server1, first_address]}
+      protocol_port: 80
+  member1:
+    type: OS::Neutron::PoolMember
+    properties:
+      pool_id: {get_resource: pool}
+      address: {get_attr: [server2, first_address]}
+      protocol_port: 80
+
+  # assign a floating ip address to the load balancer
+  #   # pool.
+  lb_floating:
+    type: "OS::Neutron::FloatingIP"
+    properties:
+      floating_network_id: {get_param: public_net_id}
+      port_id: {get_attr: [pool, vip, port_id]}
+outputs:
+  server1_private_ip:
+    description: IP address of server1 in private network
+    value: { get_attr: [ server1, first_address ] }
+  server2_private_ip:
+    description: IP address of server2 in private network
+    value: { get_attr: [ server2, first_address ] }
+  pool_ip_address:
+    value: {get_attr: [pool, vip, address]}
+    description: The IP address of the load balancing pool
