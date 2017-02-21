@@ -11,7 +11,7 @@ parameters:
     default: aio-key
   image:
     type: string
-    description: Name of image to use for servers
+    description: Name of image to use for servers/instances/VMs
     default: FC23-Nginx-Docker-CL   
   flavor:
     type: string
@@ -43,7 +43,7 @@ parameters:
     default: 10.10.30.254
   private_net_v6:
     type: string
-    description: Private IPv6 subnet address
+    description: Private IPv6 subnet address with prefix notation
     default: 2001:db8:cafe:1e::/64
   private_net_v6_gateway:
     type: string
@@ -57,6 +57,7 @@ parameters:
     type: string
     description: End of private network IP address allocation pool
     default: 2001:db8:cafe:1e:ffff:ffff:ffff:fffe
+
 resources:
   private_net:
     type: OS::Neutron::Net
