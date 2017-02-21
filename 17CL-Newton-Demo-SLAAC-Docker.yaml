@@ -192,7 +192,7 @@ resources:
   lb:
     type: OS::Neutron::LBaaS::LoadBalancer
     properties:
-      vip_subnet: { get_resource: private_v6_subnet }
+      vip_subnet: { get_resource: private_subnet }
 
   member:
     type: OS::Neutron::LBaaS::PoolMember
@@ -200,11 +200,11 @@ resources:
       pool: { get_resource: pool }
       address: {get_attr: [server1, first_address]}
       protocol_port: 80
-      subnet: { get_resource: private_v6_subnet }
+      subnet: { get_resource: private_subnet }
   member1:
     type: OS::Neutron::LBaaS::PoolMember
     properties:
       pool: { get_resource: pool }
       address: {get_attr: [server2, first_address]}
       protocol_port: 80
-      subnet: { get_resource: private_v6_subnet }
+      subnet: { get_resource: private_subnet }
