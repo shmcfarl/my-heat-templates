@@ -1,8 +1,8 @@
 heat_template_version: 2016-10-14
 
 description: >
-  HOT template to create a new neutron network plus a router to the public
-  network, and for deploying two servers into the new network. 
+  Example for Cisco Live - HOT template to create a new neutron network (Dual-Stack) plus a router to the public
+  network, and for deploying two servers into the new network.
 
 parameters:
   key_name:
@@ -12,7 +12,7 @@ parameters:
   image:
     type: string
     description: Name of image to use for servers/instances/VMs
-    default: FC23-Nginx-Docker-CL   
+    default: FC23-Nginx-Docker-CL
   flavor:
     type: string
     description: Flavor to use for servers
@@ -136,7 +136,7 @@ resources:
         #!/bin/bash
         # insert local commands here
       security_groups: [{ get_resource: server_security_group }]
-  
+
   server_security_group:
     type: OS::Neutron::SecurityGroup
     properties:
@@ -175,14 +175,14 @@ resources:
       max_retries: 5
       timeout: 5
       pool: { get_resource: pool }
-  
+
   listener:
     type: OS::Neutron::LBaaS::Listener
     properties:
       protocol: HTTP
       protocol_port: 80
       loadbalancer: { get_resource: lb }
-    
+
   pool:
     type: OS::Neutron::LBaaS::Pool
     properties:
